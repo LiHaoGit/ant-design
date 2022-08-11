@@ -20,7 +20,7 @@ import TreeSelect from '../../tree-select';
 
 import mountTest from '../../../tests/shared/mountTest';
 import rtlTest from '../../../tests/shared/rtlTest';
-import { fireEvent, render, sleep } from '../../../tests/utils';
+import { fireEvent, render, sleep, screen, waitFor } from '../../../tests/utils';
 import ConfigProvider from '../../config-provider';
 import Drawer from '../../drawer';
 import zhCN from '../../locale/zh_CN';
@@ -154,17 +154,18 @@ describe('Form', () => {
   });
 
   it('`shouldUpdate` should work with render props', () => {
-    mount(
+    render(
       <Form>
         <Form.Item>{() => null}</Form.Item>
       </Form>,
     );
+
     expect(errorSpy).toHaveBeenCalledWith(
       'Warning: [antd: Form.Item] `children` of render props only work with `shouldUpdate` or `dependencies`.',
     );
   });
   it("`shouldUpdate` shouldn't work with `dependencies`", () => {
-    mount(
+    render(
       <Form>
         <Form.Item shouldUpdate dependencies={[]}>
           {() => null}
@@ -177,7 +178,7 @@ describe('Form', () => {
   });
 
   it('`name` should not work with render props', () => {
-    mount(
+    render(
       <Form>
         <Form.Item name="test" shouldUpdate>
           {() => null}
@@ -190,7 +191,7 @@ describe('Form', () => {
   });
 
   it('children is array has name props', () => {
-    mount(
+    render(
       <Form>
         <Form.Item name="test">
           <div>one</div>
@@ -221,7 +222,7 @@ describe('Form', () => {
           );
         };
 
-        const wrapper = mount(<Demo />, { attachTo: document.body });
+        const wrapper = render(<Demo />, { attachTo: document.body });
 
         expect(scrollIntoView).not.toHaveBeenCalled();
         const form = callGetForm();
@@ -265,9 +266,9 @@ describe('Form', () => {
   it('scrollToFirstError', async () => {
     const onFinishFailed = jest.fn();
 
-    const wrapper = mount(
+    const wrapper = render(
       <Form scrollToFirstError={{ block: 'center' }} onFinishFailed={onFinishFailed}>
-        <Form.Item name="test" rules={[{ required: true }]}>
+        <Form.Item name="test" rules={[{ required: true, message: 'test is required!' }]}>
           <input />
         </Form.Item>
       </Form>,
@@ -275,8 +276,8 @@ describe('Form', () => {
     );
 
     expect(scrollIntoView).not.toHaveBeenCalled();
-    wrapper.find('form').simulate('submit');
-    await sleep(50);
+    fireEvent.submit(wrapper.container.querySelector('form'));
+    await waitFor(() => wrapper.getByText('test is required!'));
     const inputNode = document.getElementById('test');
     expect(scrollIntoView).toHaveBeenCalledWith(inputNode, {
       block: 'center',
@@ -288,18 +289,19 @@ describe('Form', () => {
   });
 
   it('Form.Item should support data-*、aria-* and custom attribute', () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       <Form>
         <Form.Item data-text="123" aria-hidden="true" cccc="bbbb">
           text
         </Form.Item>
       </Form>,
     );
-    expect(wrapper.render()).toMatchSnapshot();
+    expect(container.firstChild).toMatchSnapshot();
+    unmount();
   });
 
   it('warning when use `name` but children is not validate element', () => {
-    mount(
+    const { unmount } = render(
       <Form>
         <Form.Item name="warning">text</Form.Item>
       </Form>,
@@ -307,47 +309,53 @@ describe('Form', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'Warning: [antd: Form.Item] `name` is only used for validate React element. If you are using Form.Item as layout display, please remove `name` instead.',
     );
+    unmount();
   });
 
-  it('dynamic change required', () => {
-    const wrapper = mount(
-      <Form>
-        <Form.Item label="light" name="light" valuePropName="checked">
-          <input type="checkbox" />
-        </Form.Item>
-        <Form.Item
-          label="bamboo"
-          name="bamboo"
-          dependencies={['light']}
-          rules={[({ getFieldValue }) => ({ required: getFieldValue('light') })]}
-        >
-          <input />
-        </Form.Item>
-      </Form>,
-    );
+  it('dynamic change required', async () => {
+    const App = () => {
+      const [required, setRequired] = React.useState(false);
+      return (
+        <>
+          <Form>
+            <Form.Item
+              label="bamboo"
+              name="bamboo"
+              dependencies={['light']}
+              rules={[() => ({ required })]}
+            >
+              <input />
+            </Form.Item>
+          </Form>
+          <Button onClick={() => setRequired(true)}>set</Button>
+        </>
+      );
+    };
+    const { container, unmount } = render(<App />);
 
-    expect(wrapper.find('.ant-form-item-required')).toHaveLength(0);
+    expect(container.querySelectorAll('.ant-form-item-required')).toHaveLength(0);
 
-    wrapper.find('input[type="checkbox"]').simulate('change', { target: { checked: true } });
-    wrapper.update();
-    expect(wrapper.find('.ant-form-item-required')).toHaveLength(1);
+    fireEvent.click(container.querySelector('button'));
+
+    expect(container.querySelectorAll('.ant-form-item-required')).toHaveLength(1);
+    unmount();
   });
 
   describe('should show related className when customize help', () => {
     it('normal', () => {
-      const wrapper = mount(
+      const { container, unmount } = render(
         <Form>
           <Form.Item help="good">
             <input />
           </Form.Item>
         </Form>,
       );
-
-      expect(wrapper.exists('.ant-form-item-with-help')).toBeTruthy();
+      expect(container.querySelector('.ant-form-item-with-help')).toBeTruthy();
+      unmount();
     });
 
     it('empty string', () => {
-      const wrapper = mount(
+      const { container, unmount } = render(
         <Form>
           <Form.Item help="">
             <input />
@@ -355,7 +363,8 @@ describe('Form', () => {
         </Form>,
       );
 
-      expect(wrapper.exists('.ant-form-item-with-help')).toBeTruthy();
+      expect(container.querySelector('.ant-form-item-with-help')).toBeTruthy();
+      unmount();
     });
   });
 
@@ -370,7 +379,7 @@ describe('Form', () => {
   it('Error change should work', async () => {
     jest.useFakeTimers();
 
-    const { container } = render(
+    const { container, unmount } = render(
       <Form>
         <Form.Item
           name="name"
@@ -406,10 +415,11 @@ describe('Form', () => {
     /* eslint-enable */
 
     jest.useRealTimers();
+    unmount();
   });
 
   // https://github.com/ant-design/ant-design/issues/20813
-  it('should update help directly when provided', () => {
+  it('should update help directly when provided', async () => {
     function App() {
       const [message, updateMessage] = React.useState('');
       return (
@@ -422,14 +432,17 @@ describe('Form', () => {
       );
     }
 
-    const wrapper = mount(<App />);
-    wrapper.find('button').simulate('click');
-    expect(wrapper.find('.ant-form-item').first().hasClass('ant-form-item-with-help')).toBeTruthy();
-    expect(wrapper.find('.ant-form-item-explain').text()).toEqual('bamboo');
+    const { container, unmount } = render(<App />);
+    fireEvent.click(container.querySelector('button'));
+    expect(
+      container.querySelector('.ant-form-item').className.includes('ant-form-item-with-help'),
+    ).toBeTruthy();
+    expect(container.querySelector('.ant-form-item-explain').textContent).toEqual('bamboo');
+    unmount();
   });
 
   it('warning when use `dependencies` but `name` is empty & children is not a render props', () => {
-    mount(
+    render(
       <Form>
         <Form.Item dependencies={[]}>text</Form.Item>
       </Form>,
@@ -481,12 +494,13 @@ describe('Form', () => {
   });
 
   it('empty help should also render', () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       <Form.Item help="">
         <input />
       </Form.Item>,
     );
-    expect(wrapper.find('.ant-form-item-explain').length).toBeTruthy();
+    expect(container.querySelectorAll('.ant-form-item-explain')).toHaveLength(1);
+    unmount();
   });
 
   it('Form.Item with `help` should display error style when validate failed', async () => {
@@ -537,33 +551,33 @@ describe('Form', () => {
 
   // https://github.com/ant-design/ant-design/issues/21167
   it('`require` without `name`', () => {
-    const wrapper = mount(
+    const { container } = render(
       <Form.Item label="test" required>
         <input />
       </Form.Item>,
     );
 
-    expect(wrapper.find('.ant-form-item-required')).toHaveLength(1);
+    expect(container.querySelectorAll('.ant-form-item-required')).toHaveLength(1);
   });
 
   it('0 is a validate Field', () => {
-    const wrapper = mount(
+    const { container } = render(
       <Form.Item name={0}>
         <input />
       </Form.Item>,
     );
 
-    expect(wrapper.find('Field')).toHaveLength(1);
+    expect(container.querySelector('input').hasAttribute('id')).toBeTruthy();
   });
 
   it('`null` triggers warning and is treated as `undefined`', () => {
-    const wrapper = mount(
+    const { container } = render(
       <Form.Item name={null}>
         <input />
       </Form.Item>,
     );
 
-    expect(wrapper.find('Field')).toHaveLength(0);
+    expect(container.querySelector('input').hasAttribute('id')).toBeFalsy();
     expect(errorSpy).toHaveBeenCalledWith(
       'Warning: [antd: Form.Item] `null` is passed as `name` property',
     );
@@ -582,14 +596,15 @@ describe('Form', () => {
       }
     }
     expect(() => {
-      const wrapper = mount(
+      const { container, unmount } = render(
         <Form>
           <Form.Item name="custom">
             <CustomComponent />
           </Form.Item>
         </Form>,
       );
-      wrapper.find(CustomComponent).simulate('change', { value: '123' });
+      fireEvent.change(container.querySelector('input'), { target: { value: '123' } });
+      unmount();
     }).not.toThrow();
   });
 
@@ -624,7 +639,7 @@ describe('Form', () => {
   });
 
   it('`label` support template', async () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       // eslint-disable-next-line no-template-curly-in-string
       <Form validateMessages={{ required: '${label} is good!' }}>
         <Form.Item name="test" label="Bamboo" rules={[{ required: true }]}>
@@ -633,16 +648,17 @@ describe('Form', () => {
       </Form>,
     );
 
-    wrapper.find('form').simulate('submit');
-    await sleep(100);
-    wrapper.update();
-    await sleep(100);
-    expect(wrapper.find('.ant-form-item-explain').first().text()).toEqual('Bamboo is good!');
+    fireEvent.submit(container.querySelector('form'));
+    await screen.findByText('Bamboo is good!');
+    expect(container.querySelector('.ant-form-item-explain').firstChild.textContent).toEqual(
+      'Bamboo is good!',
+    );
+    unmount();
   });
 
   // https://github.com/ant-design/ant-design/issues/33691
   it('should keep upper locale in nested ConfigProvider', async () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       <ConfigProvider locale={zhCN}>
         <ConfigProvider>
           <Form>
@@ -654,15 +670,16 @@ describe('Form', () => {
       </ConfigProvider>,
     );
 
-    wrapper.find('form').simulate('submit');
-    await sleep(100);
-    wrapper.update();
-    await sleep(100);
-    expect(wrapper.find('.ant-form-item-explain').first().text()).toEqual('请输入Bamboo');
+    fireEvent.submit(container.querySelector('form'));
+    await screen.findByText('请输入Bamboo');
+    expect(container.querySelector('.ant-form-item-explain').firstElementChild.textContent).toEqual(
+      '请输入Bamboo',
+    );
+    unmount();
   });
 
   it('`name` support template when label is not provided', async () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       // eslint-disable-next-line no-template-curly-in-string
       <Form validateMessages={{ required: '${label} is good!' }}>
         <Form.Item name="Bamboo" rules={[{ required: true }]}>
@@ -671,15 +688,16 @@ describe('Form', () => {
       </Form>,
     );
 
-    wrapper.find('form').simulate('submit');
-    await sleep(100);
-    wrapper.update();
-    await sleep(100);
-    expect(wrapper.find('.ant-form-item-explain').first().text()).toEqual('Bamboo is good!');
+    fireEvent.submit(container.querySelector('form'));
+    await screen.findByText('Bamboo is good!');
+    expect(container.querySelector('.ant-form-item-explain').firstElementChild.textContent).toEqual(
+      'Bamboo is good!',
+    );
+    unmount();
   });
 
   it('`messageVariables` support validate', async () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       // eslint-disable-next-line no-template-curly-in-string
       <Form validateMessages={{ required: '${label} is good!' }}>
         <Form.Item name="test" messageVariables={{ label: 'Bamboo' }} rules={[{ required: true }]}>
@@ -688,16 +706,18 @@ describe('Form', () => {
       </Form>,
     );
 
-    wrapper.find('form').simulate('submit');
-    await sleep(100);
-    wrapper.update();
-    await sleep(100);
-    expect(wrapper.find('.ant-form-item-explain').first().text()).toEqual('Bamboo is good!');
+    fireEvent.submit(container.querySelector('form'));
+    await screen.findByText('Bamboo is good!');
+
+    expect(container.querySelector('.ant-form-item-explain').firstElementChild.textContent).toEqual(
+      'Bamboo is good!',
+    );
+    unmount();
   });
 
   it('validation message should has alert role', async () => {
     // https://github.com/ant-design/ant-design/issues/25711
-    const wrapper = mount(
+    const { container, getByRole, unmount } = render(
       // eslint-disable-next-line no-template-curly-in-string
       <Form validateMessages={{ required: 'name is good!' }}>
         <Form.Item name="test" rules={[{ required: true }]}>
@@ -705,14 +725,11 @@ describe('Form', () => {
         </Form.Item>
       </Form>,
     );
+    fireEvent.submit(container.querySelector('form'));
+    await waitFor(() => screen.getByText('name is good!'));
 
-    wrapper.find('form').simulate('submit');
-    await sleep(100);
-    wrapper.update();
-    await sleep(100);
-    expect(wrapper.find('.ant-form-item-explain div').getDOMNode().getAttribute('role')).toBe(
-      'alert',
-    );
+    expect(getByRole('alert')).toBeTruthy();
+    unmount();
   });
 
   it('return same form instance', () => {
@@ -777,7 +794,7 @@ describe('Form', () => {
   });
 
   it('warning with `defaultValue`', () => {
-    mount(
+    const { unmount } = render(
       <Form>
         <Form.Item name="light">
           <input defaultValue="should warning" />
@@ -788,6 +805,7 @@ describe('Form', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'Warning: [antd: Form.Item] `defaultValue` will not work on controlled Field. You should use `initialValues` of Form instead.',
     );
+    unmount();
   });
 
   it('Remove Field should also reset error', async () => {
@@ -805,14 +823,14 @@ describe('Form', () => {
       </Form>
     );
 
-    const wrapper = mount(<Demo showA />);
-    await Promise.resolve();
-    expect(wrapper.find('.ant-form-item').last().hasClass('ant-form-item-with-help')).toBeTruthy();
+    const wrapper = render(<Demo showA />);
 
-    wrapper.setProps({ showA: false });
-    await Promise.resolve();
-    wrapper.update();
-    expect(wrapper.find('.ant-form-item').last().hasClass('ant-form-item-with-help')).toBeFalsy();
+    expect(wrapper.container.querySelector('.ant-form-item-with-help')).toBeTruthy();
+
+    wrapper.rerender(<Demo showA={false} />);
+
+    expect(wrapper.container.querySelector('.ant-form-item-with-help')).toBeFalsy();
+    wrapper.unmount();
   });
 
   it('no warning of initialValue & getValueProps & preserve', () => {
@@ -827,7 +845,7 @@ describe('Form', () => {
   });
 
   it('should customize id work', () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       <Form>
         <Form.Item name="light">
           <Input id="bamboo" />
@@ -835,47 +853,53 @@ describe('Form', () => {
       </Form>,
     );
 
-    expect(wrapper.find('input').prop('id')).toEqual('bamboo');
+    expect(container.querySelector('input').id).toEqual('bamboo');
+    unmount();
   });
 
-  it('Form validateTrigger', () => {
-    const wrapper = mount(
+  it('Form validateTrigger', async () => {
+    const { container, getByText, unmount } = render(
       <Form validateTrigger="onBlur">
-        <Form.Item name="light">
+        <Form.Item name="light" rules={[{ required: true, message: 'name is good!' }]}>
           <Input />
         </Form.Item>
       </Form>,
     );
-
-    expect(wrapper.find('input').prop('onBlur')).toBeTruthy();
+    fireEvent.blur(container.querySelector('input'));
+    await waitFor(() => {
+      expect(getByText('name is good!')).toBeTruthy();
+    });
+    unmount();
   });
 
   describe('Form item hidden', () => {
     it('should work', () => {
-      const wrapper = mount(
+      const { container, unmount } = render(
         <Form>
           <Form.Item name="light" hidden>
             <Input />
           </Form.Item>
         </Form>,
       );
-      expect(wrapper.render()).toMatchSnapshot();
+      expect(container.firstChild).toMatchSnapshot();
+      unmount();
     });
 
     it('noStyle should not work when hidden', () => {
-      const wrapper = mount(
+      const { container, unmount } = render(
         <Form>
           <Form.Item name="light" hidden noStyle>
             <Input />
           </Form.Item>
         </Form>,
       );
-      expect(wrapper.render()).toMatchSnapshot();
+      expect(container.firstChild).toMatchSnapshot();
+      unmount();
     });
   });
 
   it('legacy hideRequiredMark', () => {
-    const wrapper = mount(
+    const { container, unmount } = render(
       <Form hideRequiredMark>
         <Form.Item name="light" required>
           <Input />
@@ -883,7 +907,10 @@ describe('Form', () => {
       </Form>,
     );
 
-    expect(wrapper.find('form').hasClass('ant-form-hide-required-mark')).toBeTruthy();
+    expect(
+      container.querySelector('form').className.includes('ant-form-hide-required-mark'),
+    ).toBeTruthy();
+    unmount();
   });
 
   it('form should support disabled', () => {
@@ -957,13 +984,14 @@ describe('Form', () => {
       </Form>
     );
 
-    const wrapper = mount(<App />);
+    const { container, unmount } = render(<App />);
 
-    expect(wrapper.render()).toMatchSnapshot();
+    expect(container.firstChild).toMatchSnapshot();
+    unmount();
   });
 
   it('_internalItemRender api test', () => {
-    const wrapper = mount(
+    const { container } = render(
       <Form>
         <Form.Item
           name="light"
@@ -982,7 +1010,7 @@ describe('Form', () => {
         </Form.Item>
       </Form>,
     );
-    expect(wrapper.find('#_test').exists()).toBeTruthy();
+    expect(container.querySelector('#_test')).toBeTruthy();
   });
 
   it('Form Item element id will auto add form_item prefix if form name is empty and item name is in the black list', async () => {
@@ -1021,28 +1049,26 @@ describe('Form', () => {
       );
     };
 
-    const wrapper = mount(<Demo />, { attachTo: document.body });
+    const { container, rerender, unmount } = render(<Demo />, { baseElement: document.body });
     expect(mockFn).toHaveBeenCalled();
     expect(Util.getFieldId()).toBe(itemName);
 
     // make sure input id is parentNode
-    expect(wrapper.find(`#${itemName}`).exists()).toBeTruthy();
-    act(() => {
-      wrapper.find('button').simulate('click');
-    });
-    expect(wrapper.find('button').text()).toBe('show');
+    expect(container.querySelector(`#${itemName}`)).toBeTruthy();
+    fireEvent.click(container.querySelector('button'));
+    expect(container.querySelector('button').textContent).toBe('show');
 
     mockFn.mockRestore();
     // https://enzymejs.github.io/enzyme/docs/api/ShallowWrapper/update.html
     // setProps instead of update
-    wrapper.setProps({});
-    expect(wrapper.find(`#form_item_${itemName}`).exists()).toBeTruthy();
-    wrapper.unmount();
+    rerender(<Demo />);
+    expect(container.querySelector(`#form_item_${itemName}`)).toBeTruthy();
+    unmount();
   });
 
   describe('tooltip', () => {
-    it('ReactNode', () => {
-      const wrapper = mount(
+    it('ReactNode', async () => {
+      const { container } = render(
         <Form>
           <Form.Item label="light" tooltip={<span>Bamboo</span>}>
             <Input />
@@ -1050,21 +1076,22 @@ describe('Form', () => {
         </Form>,
       );
 
-      const tooltipProps = wrapper.find('Tooltip').props();
-      expect(tooltipProps.title).toEqual(<span>Bamboo</span>);
+      fireEvent.mouseOver(container.querySelector('.ant-form-item-tooltip'));
+      await waitFor(() => screen.getAllByRole('tooltip'));
+      expect(screen.getByRole('tooltip').innerHTML).toEqual(`<span>Bamboo</span>`);
     });
 
-    it('config', () => {
-      const wrapper = mount(
+    it('config', async () => {
+      const { container } = render(
         <Form>
           <Form.Item label="light" tooltip={{ title: 'Bamboo' }}>
             <Input />
           </Form.Item>
         </Form>,
       );
-
-      const tooltipProps = wrapper.find('Tooltip').props();
-      expect(tooltipProps.title).toEqual('Bamboo');
+      fireEvent.mouseOver(container.querySelector('.ant-form-item-tooltip'));
+      await waitFor(() => screen.getAllByRole('tooltip'));
+      expect(screen.getByRole('tooltip').textContent).toEqual('Bamboo');
     });
   });
 
@@ -1132,7 +1159,7 @@ describe('Form', () => {
 
   describe('form colon', () => {
     it('default colon', () => {
-      const wrapper = mount(
+      const { container } = render(
         <Form>
           <Form.Item label="姓名">
             <input />
@@ -1140,11 +1167,11 @@ describe('Form', () => {
         </Form>,
       );
 
-      expect(wrapper.exists('.ant-form-item-no-colon')).toBeFalsy();
+      expect(container.querySelector('.ant-form-item-no-colon')).toBeFalsy();
     });
 
     it('set Form.Item colon false', () => {
-      const wrapper = mount(
+      const { container } = render(
         <Form colon>
           <Form.Item colon={false} label="姓名">
             <Input />
@@ -1152,11 +1179,11 @@ describe('Form', () => {
         </Form>,
       );
 
-      expect(wrapper.find('.ant-form-item-no-colon')).toBeTruthy();
+      expect(container.querySelector('.ant-form-item-no-colon')).toBeTruthy();
     });
 
     it('set Form colon false', () => {
-      const wrapper = mount(
+      const { container } = render(
         <Form colon={false}>
           <Form.Item label="姓名">
             <Input />
@@ -1164,7 +1191,7 @@ describe('Form', () => {
         </Form>,
       );
 
-      expect(wrapper.find('.ant-form-item-no-colon')).toBeTruthy();
+      expect(container.querySelector('.ant-form-item-no-colon')).toBeTruthy();
     });
   });
 
